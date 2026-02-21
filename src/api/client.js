@@ -1,6 +1,17 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+const getBaseUrl = () => {
+    let url = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    // Remove trailing slash if exists
+    url = url.replace(/\/$/, '');
+    // Ensure /api/v1 is present
+    if (!url.endsWith('/api/v1')) {
+        url = `${url}/api/v1`;
+    }
+    return url;
+};
+
+const API_URL = getBaseUrl();
 
 const client = axios.create({
     baseURL: API_URL,
