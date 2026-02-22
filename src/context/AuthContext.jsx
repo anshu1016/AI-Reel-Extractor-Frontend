@@ -37,6 +37,8 @@ export const AuthProvider = ({ children }) => {
             params.append('username', username);
             params.append('password', password);
 
+            console.log('[Auth] Attempting login to:', client.defaults.baseURL);
+
             const response = await client.post('/auth/login/access-token', params, {
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
             });
@@ -52,8 +54,28 @@ export const AuthProvider = ({ children }) => {
             toast.success('Access Granted');
             return true;
         } catch (error) {
-            console.error('Login error:', error);
-            toast.error('Access Denied: Invalid Credentials');
+            console.error('[Auth] Login error:', error);
+
+            // Network / CORS error (no response from server)
+            if (!error.response) {
+                toast.error(`Cannot reach server. Check network or backend URL.\n${client.defaults.baseURL}`, { duration: 6000 });
+                return false;
+            }
+
+            // Server returned an error response
+            const status = error.response?.status;
+            const detail = error.response?.data?.detail;
+
+            if (status === 400 || status === 401 || status === 422) {
+                // Show backend's exact error message if available
+                const msg = detail || 'Incorrect email or password';
+                toast.error(`Access Denied: ${msg}`, { duration: 5000 });
+            } else if (status === 429) {
+                toast.error('Too many login attempts. Try again in 15 minutes.', { duration: 6000 });
+            } else {
+                toast.error(`Login failed (${status}): ${detail || 'Unknown error'}`, { duration: 5000 });
+            }
+
             return false;
         }
     };
