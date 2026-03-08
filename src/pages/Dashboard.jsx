@@ -34,22 +34,51 @@ const Dashboard = () => {
         const file = e.target.files[0];
         if (!file) return;
 
-        const formData = new FormData();
-        formData.append('file', file);
-
         setUploading(true);
         const toastId = toast.loading('Initiating Uplink...');
 
         try {
-            await client.post('/videos/upload', formData);
-            toast.success('Uplink Successful', { id: toastId });
+            // Step 1: Get signed upload credentials from our backend
+            const authResponse = await client.post('/videos/upload-authorization');
+            const { video_id, upload_url, upload_params } = authResponse.data;
+
+            // Step 2: Build direct Cloudinary upload payload
+            const formData = new FormData();
+            formData.append('file', file);
+            for (const key in upload_params) {
+                formData.append(key, upload_params[key]);
+            }
+
+            // Step 3: Upload directly to Cloudinary (avoids backend proxy timeouts)
+            const uploadRes = await fetch(upload_url, {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!uploadRes.ok) {
+                const errBody = await uploadRes.json().catch(() => ({}));
+                throw new Error(errBody?.error?.message || 'Cloudinary upload failed');
+            }
+
+            const cloudinaryData = await uploadRes.json();
+
+            // Step 4: Notify local backend — bypasses Cloudinary webhook (unreachable in dev)
+            await client.post(`/videos/${video_id}/confirm-upload`, {
+                video_url: cloudinaryData.secure_url,
+                duration_seconds: cloudinaryData.duration ? Math.round(cloudinaryData.duration) : null,
+                original_filename: file.name,
+            });
+
+            toast.success('Uplink Successful — Pipeline started!', { id: toastId });
             setShowUpload(false);
             fetchVideos();
         } catch (error) {
-            console.error("Upload error:", error);
-            toast.error('Uplink Failed', { id: toastId });
+            console.error('Upload error:', error);
+            toast.error(`Uplink Failed: ${error.message}`, { id: toastId });
         } finally {
             setUploading(false);
+            const input = document.getElementById('file-upload');
+            if (input) input.value = '';
         }
     };
 
